@@ -16,7 +16,7 @@ find_package(Vulkan REQUIRED)
 # Find glslc path
 find_program(GLSLC_EXECUTABLE glslc)
 if(NOT GLSLC_EXECUTABLE)
-    message(FATAL_ERROR "glslc が見つかりません。パスを通してください。")
+    message(FATAL_ERROR "glslc not found, please put it in your path.")
 endif()
 
 # Setup shader source and output path （例: shaders/compute.comp → build/shaders/compute.spv）
@@ -40,7 +40,7 @@ add_custom_target(shaders ALL DEPENDS ${SHADER_SPV})
 # Add executable
 add_executable(gpu_computation 
     src/main.cpp
-    # 他のソースファイルがある場合はここに追加してください
+    # If you have other source files, add them here
 )
 
 # Include Vulkan headers
@@ -57,8 +57,8 @@ target_link_libraries(gpu_computation
 if(MSVC)
     # Microsoft Visual C++ specific flags
     target_compile_options(gpu_computation PRIVATE 
-        /W4     # 高い警告レベルを有効化
-        /WX     # 警告をエラーとして扱う
+        /W4     # Enable high warning level
+        /WX     # Treat warnings as errors
     )
 else()
     # GCC/Clang specific flags
@@ -69,6 +69,9 @@ else()
     )
 endif()
 
+# Ensure shaders are built before the executable
+add_dependencies(gpu_computation shaders)
+
 # Optional: Specify debug/release configurations
 set(CMAKE_CONFIGURATION_TYPES "Debug;Release" CACHE STRING "Configs" FORCE)
 set(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}/install" CACHE PATH "Installation Directory" FORCE)
@@ -78,5 +81,3 @@ message(STATUS "Vulkan_FOUND: ${Vulkan_FOUND}")
 message(STATUS "Vulkan_INCLUDE_DIRS: ${Vulkan_INCLUDE_DIRS}")
 message(STATUS "Vulkan_LIBRARIES: ${Vulkan_LIBRARIES}")
 
-# Ensure shaders are built before the executable
-add_dependencies(gpu_computation shaders)
