@@ -1,0 +1,28 @@
+#version 450
+
+// Binding definitions
+layout(set = 0, binding = 0) buffer InputBuffer {
+    float input_data[];
+};
+
+layout(set = 0, binding = 1) buffer OutputBuffer {
+    float output_data[];
+};
+
+// Compute shader local workgroup size
+layout(local_size_x = 64) in;
+
+// Custom operation function
+void custom_operation(uint index) {
+    // Implement the operation on the input data
+    // Example: Simple element-wise operation
+    output_data[index] = input_data[index] * 2.0f;
+}
+
+void main() {
+    // Get the global work item index
+    uint index = gl_GlobalInvocationID.x;
+    
+    // Execute the custom operation
+    custom_operation(index);
+}

@@ -151,15 +151,45 @@ VkBool32 create_logical_device_and_queue(VulkanArrayCompute* context) {
     return VK_TRUE;
 }
 
+// Function for loading shader binaries
+char* read_file(const char* filename, size_t* size) {
+    FILE* file = fopen(filename, "rb");
+    if (!file) {
+        printf("Failed to open shader file: %s\n", filename);
+        return NULL;
+    }
+    fseek(file, 0, SEEK_END);
+    *size = ftell(file);
+    rewind(file);
+    char* buffer = malloc(*size);
+    if (!buffer) {
+        fclose(file);
+        return NULL;
+    }
+    fread(buffer, 1, *size, file);
+    fclose(file);
+    return buffer;
+}
+
 // create_shader_module
 VkBool32 create_shader_module(VulkanArrayCompute* context) {
+    size_t shader_size = 0;
+    char* shader_code = read_file("../shaders/compute.spv", &shader_size);
+    if (!shader_code) return VK_FALSE;
+
     VkShaderModuleCreateInfo create_info = {
         .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        .codeSize = strlen(compute_shader_template),
-        .pCode = (const uint32_t*)compute_shader_template
+        .codeSize = shader_size,
+        .pCode = (const uint32_t*)shader_code
     };
 
-    VK_CHECK(vkCreateShaderModule(context->device, &create_info, NULL, &context->compute_shader));
+    VkResult result = vkCreateShaderModule(context->device, &create_info, NULL, &context->compute_shader);
+    free(shader_code);
+
+    if (result != VK_SUCCESS) {
+        printf("Failed to create shader module: %d\n", result);
+        return VK_FALSE;
+    }
     return VK_TRUE;
 }
 
