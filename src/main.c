@@ -193,6 +193,31 @@ VkBool32 create_shader_module(VulkanArrayCompute* context) {
     return VK_TRUE;
 }
 
+// Memory type selection
+uint32_t find_memory_type(
+    VkPhysicalDevice physicalDevice,
+    uint32_t typeFilter,
+    VkMemoryPropertyFlags properties,
+    int *type_error
+) {
+    *type_error = 0;
+
+    VkPhysicalDeviceMemoryProperties memProperties;
+    vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
+
+    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+        if ((typeFilter & (1 << i)) &&
+            (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
+            return i;
+        }
+    }
+
+    // 
+    printf("Failed to find suitable memory type!\n");
+    *type_error = -1;
+    return 0;
+}
+
 // create_buffers
 VkBool32 create_buffers(VulkanArrayCompute* context, size_t buffer_size) {
     // create input buffers
@@ -212,12 +237,21 @@ VkBool32 create_buffers(VulkanArrayCompute* context, size_t buffer_size) {
     vkGetBufferMemoryRequirements(context->device, context->output_buffer, &output_mem_req);
 
     // Memory type selection (proper memory type selection is required in a production environment)
+    int type_error;
+    uint32_t memory_type = find_memory_type(context->physical_device,
+        input_mem_req.memoryTypeBits,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        &type_error
+    );
+    if(type_error!=0) {
+        return VK_FALSE;
+    }
     VkMemoryAllocateInfo alloc_info = {
         .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
         .allocationSize = input_mem_req.size,
-        .memoryTypeIndex = 0  // Selecting appropriate indexes for your application
+        .memoryTypeIndex = memory_type // Selecting appropriate indexes for your application
     };
-
+    
     VK_CHECK(vkAllocateMemory(context->device, &alloc_info, NULL, &context->input_memory));
     VK_CHECK(vkAllocateMemory(context->device, &alloc_info, NULL, &context->output_memory));
 
@@ -326,6 +360,13 @@ VkBool32 execute_compute_shader(VulkanArrayCompute* context, uint32_t work_group
     // Pipeline bind
     vkCmdBindPipeline(context->command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, context->pipeline);
 
+    vkCmdBindDescriptorSets(context->command_buffer, 
+        VK_PIPELINE_BIND_POINT_COMPUTE, 
+        context->pipeline_layout, 
+        0, 1, 
+        &context->descriptor_set, 
+        0, NULL);
+
     // Dispatch
     vkCmdDispatch(context->command_buffer, work_group_count, 1, 1);
 
@@ -362,6 +403,9 @@ void cleanup_vulkan_context(VulkanArrayCompute* context) {
     vkDestroyPipeline(context->device, context->pipeline, NULL);
     vkDestroyPipelineLayout(context->device, context->pipeline_layout, NULL);
     vkDestroyDescriptorSetLayout(context->device, context->descriptor_set_layout, NULL);
+
+    vkDestroyDescriptorPool(context->device, context->descriptor_pool, NULL);
+
     vkDestroyShaderModule(context->device, context->compute_shader, NULL);
     
     vkFreeMemory(context->device, context->input_memory, NULL);
@@ -372,6 +416,73 @@ void cleanup_vulkan_context(VulkanArrayCompute* context) {
     
     vkDestroyDevice(context->device, NULL);
     vkDestroyInstance(context->instance, NULL);
+}
+
+// --- create_descriptor_pool ---
+VkBool32 create_descriptor_pool(VulkanArrayCompute* context) {
+    VkDescriptorPoolSize poolSize = {
+        .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        .descriptorCount = 2
+    };
+
+    VkDescriptorPoolCreateInfo poolInfo = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .poolSizeCount = 1,
+        .pPoolSizes = &poolSize,
+        .maxSets = 1
+    };
+
+    VK_CHECK(vkCreateDescriptorPool(context->device, &poolInfo, NULL, &context->descriptor_pool));
+    return VK_TRUE;
+}
+
+// --- allocate_descriptor_set ---
+VkBool32 allocate_descriptor_set(VulkanArrayCompute* context) {
+    VkDescriptorSetAllocateInfo allocInfo = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = context->descriptor_pool,
+        .descriptorSetCount = 1,
+        .pSetLayouts = &context->descriptor_set_layout
+    };
+
+    VK_CHECK(vkAllocateDescriptorSets(context->device, &allocInfo, &context->descriptor_set));
+    return VK_TRUE;
+}
+
+// --- update_descriptor_set ---
+VkBool32 update_descriptor_set(VulkanArrayCompute* context, VkDeviceSize bufferSize) {
+    VkDescriptorBufferInfo bufferInfos[2];
+    bufferInfos[0].buffer = context->input_buffer;
+    bufferInfos[0].offset = 0;
+    bufferInfos[0].range = bufferSize;
+
+    bufferInfos[1].buffer = context->output_buffer;
+    bufferInfos[1].offset = 0;
+    bufferInfos[1].range = bufferSize;
+
+    VkWriteDescriptorSet descriptorWrites[2] = {
+        {
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = context->descriptor_set,
+            .dstBinding = 0,
+            .dstArrayElement = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .descriptorCount = 1,
+            .pBufferInfo = &bufferInfos[0]
+        },
+        {
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = context->descriptor_set,
+            .dstBinding = 1,
+            .dstArrayElement = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .descriptorCount = 1,
+            .pBufferInfo = &bufferInfos[1]
+        }
+    };
+
+    vkUpdateDescriptorSets(context->device, 2, descriptorWrites, 0, NULL);
+    return VK_TRUE;
 }
 
 // Usage Example
@@ -411,6 +522,13 @@ int main() {
     if (!create_compute_pipeline(&context)) return -1;
     printf("create_command_pool_and_buffer\n");
     if (!create_command_pool_and_buffer(&context)) return -1;
+
+    printf("create_descriptor_pool\n");
+    if (!create_descriptor_pool(&context)) return -1;
+    printf("allocate_descriptor_set\n");
+    if (!allocate_descriptor_set(&context)) return -1;
+    printf("update_descriptor_set\n");
+    if (!update_descriptor_set(&context, BUFFER_SIZE)) return -1;    
     
     // Data transfer
     printf("transfer_data_to_device\n");
