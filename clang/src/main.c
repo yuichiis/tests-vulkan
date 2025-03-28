@@ -40,39 +40,6 @@ typedef struct {
         } \
     } while (0)
 
-// Compute shader template
-const char* compute_shader_template = "(\n"
-"\n"
-"#version 450\n"
-"\n"
-"// Binding definitions\n"
-"layout(set = 0, binding = 0) buffer InputBuffer {\n"
-"    float input_data[];\n"
-"};\n"
-"\n"
-"layout(set = 0, binding = 1) buffer OutputBuffer {\n"
-"    float output_data[];\n"
-"};\n"
-"\n"
-"// Compute shader local workgroup size\n"
-"layout(local_size_x = 64) in;\n"
-"\n"
-"// Custom operation function\n"
-"void custom_operation(uint index) {\n"
-"    // Implement the operation on the input data\n"
-"    // Example: Simple element-wise operation\n"
-"    output_data[index] = input_data[index] * 2.0f;\n"
-"}\n"
-"\n"
-"void main() {\n"
-"    // Get the global work item index\n"
-"    uint index = gl_GlobalInvocationID.x;\n"
-"    \n"
-"    // Execute the custom operation\n"
-"    custom_operation(index);\n"
-"}\n"
-")";
-
 // Create Vulkan Instance
 VkBool32 create_vulkan_instance(VulkanArrayCompute* context) {
     VkInstanceCreateInfo instance_info = {
